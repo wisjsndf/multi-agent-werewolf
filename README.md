@@ -37,6 +37,7 @@ source venv/bin/activate  # Windows 用户请使用 venv\Scripts\activate
 
 # 安装核心依赖项
 pip install -r requirements.txt
+```
 
 ### 配置API密钥
 在根目录创建 .env 文件，并根据你的异构模型选择填入对应的 API Keys（模板如下）：
