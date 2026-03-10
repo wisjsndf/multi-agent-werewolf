@@ -20,3 +20,32 @@
 ├── app.py / play.py    # （可选）游戏启动入口 / 交互端
 └── .env                # 环境变量配置（存放各家 API Key，已在 .gitignore 中忽略）
 
+## 🚀 快速启动 (Quick Start)
+
+### 1. 环境配置
+
+强烈建议使用 Python 3.10+ 并在虚拟环境中运行本项目。
+
+**克隆仓库并安装依赖：**
+```bash
+git clone [https://github.com/你的用户名/你的仓库名.git](https://github.com/你的用户名/你的仓库名.git)
+cd 你的仓库名
+
+# 创建并激活虚拟环境 (推荐)
+python -m venv venv
+source venv/bin/activate  # Windows 用户请使用 venv\Scripts\activate
+
+# 安装核心依赖项
+pip install -r requirements.txt
+
+### 配置API密钥
+在根目录创建 .env 文件，并根据你的异构模型选择填入对应的 API Keys（模板如下）：
+
+```
+DEEPSEEK_API_KEY=sk-xxxx
+DEEPSEEK_BASE_URL=[https://api.deepseek.com](https://api.deepseek.com)
+# 可选：配置其他厂商 API 以启动异构对战
+QWEN_API_KEY=sk-xxxx
+HUNYUAN_API_KEY=sk-xxxx
+DOUBAO_API_KEY=xxxx-xxxx
+```
