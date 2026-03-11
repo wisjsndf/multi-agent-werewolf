@@ -35,32 +35,34 @@ class LLMClient:
                 cleaned.append(msg)
         return cleaned
 
-    def send_prompt(self, messages, temperature=0.7):
+    def send_prompt(self, messages, temperature=0.7, require_json=False):
         """
         核心方法：发送消息列表并获取大模型的回复内容
-        :param messages: 消息列表，格式为 [{"role": "system", "content": "..."}, ...]
-        :param temperature: 随机性/创造力指数。数值越高，回复越多样化；数值越低，回复越确定。
-        :return: 字符串 (AI 的回复文本)
+        :param require_json: 如果为 True，将物理强制大模型只输出合法的 JSON 格式。
         """
         max_retries = 3
-
         safe_messages = self._clean_messages(messages)
+
+        # 动态拼装请求参数
+        request_kwargs = {
+            "model": self.model_name,
+            "messages": safe_messages,
+            "temperature": temperature,
+        }
+
+        if require_json:
+            request_kwargs["response_format"] = {"type": "json_object"}
 
         for attempt in range(max_retries):
             try:
-                response = self.client.chat.completions.create(
-                    model=self.model_name,
-                    messages=safe_messages,
-                    temperature=temperature,
-                )
-
-                reply_text = response.choices[0].message.content
-                return reply_text
+                # 使用 **字典解包 的方式把参数传进去
+                response = self.client.chat.completions.create(**request_kwargs)
+                return response.choices[0].message.content
             
             except Exception as e:
                 print(f"  [网络警告] API 请求失败 (尝试 {attempt + 1}/{max_retries}): {e}")
                 if attempt < max_retries - 1:
-                    time.sleep(2) # 失败后等 2 秒再试
+                    time.sleep(2)
                 else:
-                    print("  [错误] 达到最大重试次数，该玩家本轮沉默。")
-                    return "（思考失败，本轮选择过麦）"
+                    print("  [错误] 达到最大重试次数。")
+                    return "{}" if require_json else "（思考失败，本轮选择过麦）"

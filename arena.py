@@ -5,6 +5,8 @@ import argparse
 from datetime import datetime
 from dotenv import load_dotenv
 import sys
+import json
+from baseline_tutor import run_baseline_prediction
 
 def run_arena(num_games, verbose):
     load_dotenv()
@@ -47,6 +49,12 @@ def run_arena(num_games, verbose):
     villager_wins = 0
     game_results = []
     seat_stats = {seat: {"wins": 0, "games": 0} for seat in range(1, 8)}
+    baseline_eval_results = []
+
+    eval_metrics = {
+        1: {"recalls": [], "margins": []},
+        2: {"recalls": [], "margins": []}
+    }
 
     print(f"评测模式启动！将连续进行 {num_games} 场游戏...\n")
 
@@ -61,8 +69,25 @@ def run_arena(num_games, verbose):
             print(f"正在进行第 {i+1} / {num_games} 局")
             print(f"=============================\n")
 
+        current_game_predictions = {}
+
+        def evaluation_hook(current_game):
+            if current_game.day_count in [1, 2]:
+                if verbose:
+                    print(f"\n  [评测探头] 正在收集第 {current_game.day_count} 天的基线预测数据...")
+
+                alive_seats = [p.seat for p in current_game.players.values() if p.is_alive]
+
+                preds = run_baseline_prediction(
+                    client_deepseek,
+                    current_game.public_chat_history,
+                    alive_seats
+                )
+
+                current_game_predictions[current_game.day_count] = preds
+                
         players_list = create_players(brain_map)
-        game = Game(players_list, delay_seconds=0)
+        game = Game(players_list, delay_seconds=0, before_vote_callback=evaluation_hook)
         
         original_stdout = sys.stdout
 
@@ -76,6 +101,53 @@ def run_arena(num_games, verbose):
                 sys.stdout.close()
                 sys.stdout = original_stdout
         
+        ground_truth = {str(p.seat): p.role for p in game.players.values()}
+
+        game_record = {
+            "game_id": i + 1,
+            "winner": winner.name if winner else "UNKNOWN",
+            "ground_truth": ground_truth,
+            "public_chat": game.public_chat_history,      # 给高级导师看的阳光数据
+            "secret_wolf_chat": game.wolf_chat_history    # 封印的狼人密谋，绝对不能给导师看
+        }
+        with open("rag_database.jsonl", "a", encoding="utf-8") as db_file:
+            db_file.write(json.dumps(game_record, ensure_ascii=False) + "\n")
+
+        baseline_eval_results.append({
+            "game_id": i + 1,
+            "ground_truth": ground_truth,
+            "predictions": current_game_predictions
+        })
+
+        for day, preds in current_game_predictions.items():
+            if not preds: 
+                continue # 万一导师没输出东西，直接跳过
+            
+            alive_seats = [str(k) for k in preds.keys()]
+            
+            # 找出活着的真狼和真好人
+            actual_wolves = [s for s in alive_seats if "WOLF" in ground_truth.get(s, "").upper()]
+            actual_goods = [s for s in alive_seats if s not in actual_wolves]
+            
+            # (1) 算 Top-2 召回率
+            sorted_seats = sorted(alive_seats, key=lambda k: float(preds[k]), reverse=True)
+            top_2_seats = sorted_seats[:2] # 导师觉得最像狼的两个人
+            
+            hits = sum(1 for seat in top_2_seats if seat in actual_wolves)
+            recall = (hits / len(actual_wolves)) if actual_wolves else 0.0
+            eval_metrics[day]["recalls"].append(recall) # 存入大盘
+            
+            # (2) 算 置信度差值 (Margin)
+            p_wolves = [float(preds[s]) for s in actual_wolves]
+            p_goods = [float(preds[s]) for s in actual_goods]
+            
+            avg_p_wolf = (sum(p_wolves) / len(p_wolves)) if p_wolves else 0.0
+            avg_p_good = (sum(p_goods) / len(p_goods)) if p_goods else 0.0
+            
+            margin = avg_p_wolf - avg_p_good
+            eval_metrics[day]["margins"].append(margin)
+
+
         if winner and winner.name == "WOLF":
             wolf_wins += 1
             game_results.append(f"第 {i+1} 局：狼人胜利")
@@ -122,6 +194,24 @@ def run_arena(num_games, verbose):
     report_content += f"\n========================================\n📝 单局结果明细：\n"
     for res in game_results:
         report_content += res + "\n"
+
+    report_content += f"\n====================================================\n"
+    report_content += f"基线导师 (DeepSeek-Chat) 核心量化指标：\n"
+    report_content += f"====================================================\n"
+    
+    for day in [1, 2]:
+        recalls = eval_metrics[day]["recalls"]
+        margins = eval_metrics[day]["margins"]
+        
+        if recalls and margins:
+            avg_recall = sum(recalls) / len(recalls)
+            avg_margin = sum(margins) / len(margins)
+            
+            report_content += f"【Day {day} 表现】(有效评估: {len(recalls)} 局)\n"
+            report_content += f"  Top-2 狼人召回率: {avg_recall * 100:.2f}%\n"
+            report_content += f"  置信度差值(Margin): {avg_margin:.4f} (范围 -1 到 1，越高越准)\n\n"
+        else:
+            report_content += f"【Day {day} 表现】数据不足，无有效评估。\n\n"
 
     with open(report_filename, "w", encoding="utf-8") as f:
         f.write(report_content)

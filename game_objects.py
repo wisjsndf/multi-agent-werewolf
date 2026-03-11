@@ -144,18 +144,33 @@ class Werewolf(Player):
         target = self.ask_ai_for_number(private_chat_history, kill_instruction)
         return target
         
-    def speak(self, public_chat_history, prompt_template=None):
+    def speak(self, public_chat_history, prompt_template=None, game_info=None):
         """
         重写父类的 speak 方法。
         狼人白天必须伪装，所以我们要忽略传入的 template，强制使用狼人专属的伪装 Prompt。
+        截取昨晚的讨论记录，作为加密记忆注入
         """
         
-        # 1. 狼人白天的核心策略
-        # 这里的 Prompt 是这一类最关键的灵魂
-        disguise_instruction = prompts.WEREWOLF_DAY_DISGUISE
+        base_instruction = prompts.WEREWOLF_DAY_DISGUISE
+        tactics_instruction = ""
 
-        # 2. 调用父类接口
-        return self.ask_ai_to_speak(public_chat_history, disguise_instruction)
+        if game_info and "wolf_chat_history" in game_info:
+            wolf_history_list = game_info["wolf_chat_history"]
+
+            last_night_msgs = []
+            for msg in reversed(wolf_history_list):
+                if msg["role"] == "system" and "天夜晚" in msg["content"]:
+                    break
+                if msg["role"] == "user":
+                    last_night_msgs.insert(0, msg["content"])
+            
+            if last_night_msgs:
+                memory_str = "\n".join(last_night_msgs)
+                tactics_instruction = prompts.WEREWOLF_TACTICS_INJECTION.format(memory_str=memory_str)
+
+        final_disguise_instruction = base_instruction + tactics_instruction
+
+        return self.ask_ai_to_speak(public_chat_history, final_disguise_instruction)
     
     def vote(self, public_history, game_info):
         """

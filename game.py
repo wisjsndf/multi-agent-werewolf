@@ -43,7 +43,7 @@ def create_players(client_map, human_seat=None):
     return players_list
 
 class Game:
-    def __init__(self, players_list, delay_seconds=0, human_seat=None):
+    def __init__(self, players_list, delay_seconds=0, human_seat=None, before_vote_callback=None):
         """
         :param players_list: 玩家列表，元素是 Player 类的实例
         """
@@ -54,6 +54,7 @@ class Game:
         self.winner = None
         self.delay_sec = delay_seconds
         self.human_seat = human_seat
+        self.before_vote_callback = before_vote_callback
 
     def print_secret(self, msg, allowed_seats):
         if self.human_seat is None or self.human_seat in allowed_seats:
@@ -240,6 +241,10 @@ class Game:
             if self.delay_sec > 0:
                 time.sleep(self.delay_sec)
             
+        # 所有人发言完毕，投票开始前，导师来预测角色是玩家的可能性
+        if self.before_vote_callback:
+            self.before_vote_callback(self)
+
         # 3. 所有人投票 player.vote()
 
         print("  [上帝广播] 现在开始投票了，所有存活的玩家请投票选出你们怀疑的狼人。")
