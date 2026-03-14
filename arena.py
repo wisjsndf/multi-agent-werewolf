@@ -1,12 +1,16 @@
 from llm_client import LLMClient
 from game import Game, create_players
 import os
+os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
 import argparse
 from datetime import datetime
 from dotenv import load_dotenv
 import sys
 import json
 from baseline_tutor import run_baseline_prediction
+from langchain_community.vectorstores import FAISS
+from langchain_huggingface import HuggingFaceEmbeddings
+from advanced_tutor import run_advanced_prediction
 
 def run_arena(num_games, verbose):
     load_dotenv()
@@ -58,6 +62,18 @@ def run_arena(num_games, verbose):
 
     print(f"评测模式启动！将连续进行 {num_games} 场游戏...\n")
 
+    print("\n 正在唤醒本地 Embedding 模型与 FAISS 战术大典...")
+
+    embeddings = HuggingFaceEmbeddings(model_name="BAAI/bge-small-zh-v1.5")
+    vectorstore = FAISS.load_local(
+        "./werewolf_tactics_faiss", 
+        embeddings, 
+        allow_dangerous_deserialization=True
+    )
+    # 建立 retriever 对象，准备传给导师
+    retriever = vectorstore.as_retriever(search_kwargs={"k": 3})
+    print(" 战术库挂载完毕！\n")
+
     if not verbose:
         print("（提示：当前为简洁模式，游戏过程中的详细信息将被隐藏。开启 verbose 模式可查看完整日志。）\n")
     
@@ -78,10 +94,11 @@ def run_arena(num_games, verbose):
 
                 alive_seats = [p.seat for p in current_game.players.values() if p.is_alive]
 
-                preds = run_baseline_prediction(
+                preds = run_advanced_prediction(
                     client_deepseek,
                     current_game.public_chat_history,
-                    alive_seats
+                    alive_seats,
+                    retriever
                 )
 
                 current_game_predictions[current_game.day_count] = preds
@@ -168,7 +185,7 @@ def run_arena(num_games, verbose):
                     seat_stats[player.seat]["wins"] += 1
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    report_filename = f"evaluation_report_{timestamp}.txt"
+    report_filename = f"advanced_evaluation_report_{timestamp}.txt"
 
     wolf_win_rate = (wolf_wins / num_games) * 100 if num_games > 0 else 0
     villager_win_rate = (villager_wins / num_games) * 100 if num_games > 0 else 0
@@ -196,7 +213,7 @@ def run_arena(num_games, verbose):
         report_content += res + "\n"
 
     report_content += f"\n====================================================\n"
-    report_content += f"基线导师 (DeepSeek-Chat) 核心量化指标：\n"
+    report_content += f"高级导师 (DeepSeek-Chat + FAISS战术检索) 核心量化指标：\n"
     report_content += f"====================================================\n"
     
     for day in [1, 2]:
