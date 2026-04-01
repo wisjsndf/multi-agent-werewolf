@@ -24,8 +24,7 @@ class MentorGraphState(TypedDict):
     episodic_memory: Optional[Union[dict, str]] # 秘书填的记账单
     rules_info: Optional[str]   # 【新增】规则工具查出的规则
     private_info: Optional[str] # 【新增】私有状态工具查出的记录
-    semantic_memory: Optional[list] # (预留给未来的 RAG Retriever)
-    
+    semantic_memory: Optional[list] # RAG retriever使用
     # ==========================================
     # 4. 最终输出
     # ==========================================
