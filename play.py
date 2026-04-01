@@ -52,7 +52,7 @@ def main():
     players_list = create_players(brain_map, human_seat=human_seat)
     
     # 实例化游戏引擎
-    game = Game(players_list, delay_sec=delay_sec, human_seat=human_seat)
+    game = Game(players_list, delay_seconds=delay_sec, human_seat=human_seat)
 
     try:
         # 正式发车！

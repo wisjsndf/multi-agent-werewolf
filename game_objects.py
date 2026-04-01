@@ -1,6 +1,7 @@
 import re
 from enum import Enum
 import prompts
+from mentor_hook import get_human_input_with_mentor
 
 class Faction(Enum):
     WOLF = 1
@@ -20,11 +21,23 @@ class Player:
     def night_action(self, game_info):
         return None
     
+    def get_private_state(self):
+        """
+        供mentor调用，获取该角色的私有记忆/状态
+        """
+        return "平民没有任何夜晚行动记录和私有视角。"
+
     def ask_ai_to_speak(self, history, instruction):
 
         if self.is_human:
-            print(f"\n 🔔 [你的回合] 系统提示：{instruction}")
-            user_input = input(f" 请输入你 ({self.seat}号 {self.role}) 的发言：")
+            prompt_text = f"\n 🔔 [你的回合] 系统提示：{instruction}\n 请输入你 ({self.seat}号 {self.role}) 的发言"
+            
+            user_input = get_human_input_with_mentor(
+                game_instance=self.game,
+                human_player=self,
+                stage_name="DAY_SPEECH", 
+                prompt_text=prompt_text
+            )
             return user_input
 
         system_content = prompts.SYSTEM_CONTENT_BASE.format(
@@ -49,14 +62,19 @@ class Player:
     def ask_ai_for_number(self, history, instruction):
 
         if self.is_human:
-            print(f"\n 🔔 [你的回合] 系统提示：{instruction}")
+            prompt_text = f"\n 🔔 [你的回合] 系统提示：{instruction}\n👉 请输入目标座位号 (输入 0 代表弃权/空过)"
             while True:
-                user_input = input(f"👉 请输入目标座位号 (输入 0 代表弃权/空过)：")
+                user_input = get_human_input_with_mentor(
+                    game_instance=self.game,
+                    human_player=self,
+                    stage_name="ACTION_PHASE",
+                    prompt_text=prompt_text
+                )
                 try:
                     target = int(user_input.strip())
                     return target if target != 0 else None
                 except ValueError:
-                    print("❌ 格式错误，请输入纯数字！")
+                    print("❌ 格式错误，请输入纯数字！(或使用 /mentor 呼叫导师)")
 
         # 将具体的操作指令（例如刀人、守卫）和严格的数字格式要求拼接起来
         combined_instruction = f"{instruction}\n\n{prompts.ASK_FOR_NUMBER_STRICT}"
@@ -191,6 +209,10 @@ class Werewolf(Player):
 
     def night_action(self, game_info):
         return None
+    
+    def get_private_state(self):
+        teammates = "、".join(map(str, self.teammate_seats)) if self.teammate_seats else "无"
+        return f"你的加密视角：已知狼人队友的座位号是 {teammates}。"
 
 
 class Villager(Player):
@@ -257,6 +279,13 @@ class Seer(Player):
         seer_instruction = prompts.SEER_DAY_SPEAK.format(verified_log=self.verified_log)
         # 调用父类接口
         return self.ask_ai_to_speak(public_chat_history, seer_instruction)
+    
+    def get_private_state(self):
+        if not self.verified_log:
+            return "你的查验记录：空（暂未查验任何人）。"
+        
+        log_str = "、".join([f"第{i+1}次查 {seat}号是{identity}" for i, (seat, identity) in enumerate(self.verified_log.items())])
+        return f"你的完整查验记录：{log_str}"
 
 class Guard(Player):
     def __init__(self, seat, llm_client):
@@ -297,3 +326,7 @@ class Guard(Player):
         # 调用父类通用接口
         return self.ask_ai_to_speak(public_chat_history, guard_instruction)
     
+    def get_private_state(self):
+        if self.last_guarded_seat is None:
+            return "你的守护记录：昨晚没有守护任何人（空守或游戏刚开始）。"
+        return f"你的守护记录：昨晚守护了 {self.last_guarded_seat} 号。"

@@ -1,3 +1,4 @@
+#game.py
 from game_objects import Faction
 from game_objects import Player, Villager, Seer, Guard, Werewolf
 import random
@@ -48,6 +49,10 @@ class Game:
         :param players_list: 玩家列表，元素是 Player 类的实例
         """
         self.players = {p.seat: p for p in players_list}
+
+        for p in self.players.values():
+            p.game = self
+
         self.public_chat_history = []
         self.wolf_chat_history = []
         self.day_count = 1
@@ -248,6 +253,7 @@ class Game:
         # 3. 所有人投票 player.vote()
 
         print("  [上帝广播] 现在开始投票了，所有存活的玩家请投票选出你们怀疑的狼人。")
+        self.public_chat_history.append({"role": "system", "content": f"--- 第 {self.day_count} 天 投票环节开始 ---"})
         votes = {}
         for voter in alive_players:
             recent_history = self.public_chat_history
@@ -255,9 +261,13 @@ class Game:
 
             if vote_target and vote_target != 0:
                 votes[vote_target] = votes.get(vote_target, 0) + 1
-                print(f"    {voter.seat}号玩家投票放逐 {vote_target} 号")
+                msg = f"{voter.seat} 号玩家投票放逐 {vote_target} 号"
+                print(f"    {msg}")
+                self.public_chat_history.append({"role": "system", "content": msg})
             else:
-                print(f"    {voter.seat}号玩家选择弃票")
+                msg = f"{voter.seat} 号玩家选择弃票"
+                print(f"    {msg}")
+                self.public_chat_history.append({"role": "system", "content": msg})
 
             if self.delay_sec > 0:
                 time.sleep(self.delay_sec * 0.5)
